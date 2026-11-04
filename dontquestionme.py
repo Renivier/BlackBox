@@ -1,109 +1,96 @@
-import inspect
-import pickle
 from pathlib import Path
+from a import file_signatures
+
+NO_MAGIC_EXTS = {
+    ".txt", ".csv", ".tsv", ".json", ".md", ".log", ".ini", ".cfg", ".yaml",
+    ".yml", ".toml", ".py", ".js", ".ts", ".html", ".htm", ".css", ".c",
+    ".h", ".cpp", ".java", ".sh", ".bat", ".ps1",
+}
+
+EXT_MAP = {}
+for _name, _sig in file_signatures.items():
+    for _ext in _sig["exts"]:
+        EXT_MAP.setdefault(_ext, []).append(_name)
+
+# How much of the file ever needs to be read.
+HEAD_SIZE = max(
+    s.get("offset", 0) + len(m)
+    for s in file_signatures.values()
+    for m in s["magic"]
+)
+TAIL_SIZE = max(s.get("trailer_window", 0) for s in file_signatures.values())
 
 
-class Checks:
-    def __init__(self, file_object):
-        self.file_object = file_object
-        self.f = b""
-        self.result_template = {"name": "", "match": False}
-
-    def _load_data(self):
-        try:
-            with open(self.file_object, "rb") as f:
-                self.f = f.read()
-        except OSError as error:
-            raise OSError(f"Could not read file: {error}") from error
-
-    def _check_magic(self, name, definition):
-        result = {"name": name, "match": False}
-        offset = definition.get("offset", 0)
-        magic_numbers = definition.get("magic", ())
-
-        for magic_number in magic_numbers:
-            size = len(magic_number)
-
-            if self.f[offset:offset + size] == magic_number:
-                result["match"] = True
-                return result
-
-        return result
+def has_magic(head, sig):
+    offset = sig.get("offset", 0)
+    return any(head[offset:offset + len(m)] == m for m in sig["magic"])
 
 
-    def pdf_check(self):
-        result = self._check_magic("PDF", signatures["PDF"])
+def trailer_status(tail, sig):
+    """True/False if the format has a checkable trailer, None if it has none."""
+    trailer = sig.get("trailer")
+    if trailer is None:
+        return None
 
-        if self.f.startswith(b"%PDF-") and b"%%EOF" in self.f[-1024:]:
-            result["match"] = True
+    window = sig["trailer_window"]
+    tail = tail[-window:]
 
-        return result
-
-    def png_check(self):
-        result = self._check_magic("PNG", signatures["PNG"])
-
-        if self.f.startswith(b"\x89PNG\r\n\x1a\n") and self.f.endswith(b"IEND\xae\x42\x60\x82"):
-            result["match"] = True
-
-        return result
-
-    def gif_check(self):
-        result = self._check_magic("GIF", signatures["GIF"])
-
-        if self.f.startswith((b"GIF87a", b"GIF89a")) and self.f.endswith(b";"):
-            result["match"] = True
-
-        return result
-
-    def jpeg_check(self):
-        result = self._check_magic("JPEG", signatures["JPEG"])
-
-        if self.f.startswith(b"\xff\xd8\xff") and b"\xff\xd9" in self.f[-4096:]:
-            result["match"] = True
-
-        return result
-
-    def zip_check(self):
-        result = self._check_magic("ZIP", signatures["ZIP"])
-
-        if self.f.startswith(b"PK\x03\x04") and b"PK\x05\x06" in self.f[65557:]:
-            result["match"] = True
-
-        return result
-
-    def tar_check(self):
-        result = self._check_magic("TAR", signatures["TAR"])
-
-        if self.f[257:262] == b"ustar" and self.f[-1024:] == b"\x00" * 1024:
-            result["match"] = True
-
-        return result
+    if window == len(trailer):
+        return tail == trailer
+    return trailer in tail      
 
 
-with open("signatures.pkl", "rb") as f:
-    signatures = pickle.load(f)
+def read_edges(path):
+    """Read only the start and end of the file, never the whole thing."""
+    try:
+        with open(path, "rb") as f:
+            head = f.read(HEAD_SIZE)
+            f.seek(0, 2)
+            size = f.tell()
+            f.seek(max(0, size - TAIL_SIZE))
+            tail = f.read()
+    except OSError as error:
+        raise OSError(f"Could not read file: {error}") from error
+    return head, tail
 
 
-file = input("Enter a file path: ")
-file_obj = Path(file)
-obj = Checks(file_object=file_obj)
-obj._load_data()
+def validate(path):
+    path = Path(path)
+    ext = path.suffix.lower()     
 
-methods = inspect.getmembers(obj, predicate=inspect.ismethod)
-compiled_result = {}
+    candidates = EXT_MAP.get(ext)
+    if candidates is None:
+        status = "unverifiable" if ext in NO_MAGIC_EXTS else "unknown_extension"
+        return {"status": status, "ext": ext}
+
+    head, tail = read_edges(path)
+
+    for name in candidates:
+        sig = file_signatures[name]
+        if not has_magic(head, sig):
+            continue
+
+        trailer = trailer_status(tail, sig)
+        if trailer is False and sig.get("trailer_forced"):
+            return {"status": "damaged", "type": name,
+                    "reason": "magic matches but required trailer is missing"}
+        return {"status": "match", "type": name, "trailer": trailer}
+
+    actual = [n for n, s in file_signatures.items() if has_magic(head, s)]
+    return {"status": "mismatch", "ext": ext, "claims": candidates, "actual": actual}
 
 
-for name, definition in signatures.items():
-    result = obj._check_magic(name, definition)
-    compiled_result[result["name"]] = result["match"]
+def main():
+    path = input("Enter a file path: ").strip().strip('"')
+    try:
+        result = validate(path)
+    except OSError as error:
+        print(error)
+        return
+
+    for key, value in result.items():
+        print(f"{key}: {value}")
 
 
-for name, method in methods:
-    if name.endswith("_check") and name != "_check_magic":
-        result = method()
-        compiled_result[result["name"]] = result["match"]
-
-for name, match in compiled_result.items():
-    if match:
-        print(f"{name}: {match}")
-
+if __name__ == "__main__":
+    main()

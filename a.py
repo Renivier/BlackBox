@@ -1,22 +1,37 @@
-# This file only exists to save it in the pkl, it looks ugly otherwise.
-import pickle
-
-file_signatures ={
+# This file only exists to save the data.
+#
+# Optional trailer fields (omitted when a format has no reliable fixed trailer):
+#   "trailer":        bytes expected near the end of the file
+#   "trailer_window": how many bytes from the end to inspect
+#                     - equal to len(trailer)  -> trailer must be the very end (endswith)
+#                     - larger than len(trailer) -> trailer must appear inside the last N bytes
+#   "trailer_forced": True  -> a missing trailer means the file fails validation
+#                     False -> the trailer is a bonus signal only; absence is neutral
+file_signatures = {
     "BMP": {
         "magic": [b"BM"],
         "exts": [".bmp", ".dib"]
     },
     "PNG": {
         "magic": [b"\x89PNG\r\n\x1a\n"],
-        "exts": [".png"]
+        "exts": [".png"],
+        "trailer": b"IEND\xaeB`\x82",
+        "trailer_window": 8,
+        "trailer_forced": True
     },
     "JPEG": {
         "magic": [b"\xff\xd8\xff"],
-        "exts": [".jpg", ".jpeg", ".jpe", ".jfif"]
+        "exts": [".jpg", ".jpeg", ".jpe", ".jfif"],
+        "trailer": b"\xff\xd9",
+        "trailer_window": 4096,
+        "trailer_forced": True
     },
     "GIF": {
         "magic": [b"GIF87a", b"GIF89a"],
-        "exts": [".gif"]
+        "exts": [".gif"],
+        "trailer": b";",
+        "trailer_window": 1,
+        "trailer_forced": True
     },
     "TIFF": {
         "magic": [b"II\x2a\x00", b"MM\x00\x2a"],
@@ -51,11 +66,17 @@ file_signatures ={
 
     "PDF": {
         "magic": [b"%PDF-"],
-        "exts": [".pdf"]
+        "exts": [".pdf"],
+        "trailer": b"%%EOF",
+        "trailer_window": 1024,
+        "trailer_forced": True
     },
     "RTF": {
         "magic": [b"{\\rtf"],
-        "exts": [".rtf"]
+        "exts": [".rtf"],
+        "trailer": b"}",
+        "trailer_window": 8,
+        "trailer_forced": False
     },
     "OLE Compound File": {
         "magic": [b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"],
@@ -65,7 +86,10 @@ file_signatures ={
     "ZIP": {
         "magic": [b"PK\x03\x04", b"PK\x05\x06", b"PK\x07\x08"],
         "exts": [".zip", ".jar", ".apk", ".docx", ".xlsx", ".pptx",
-                 ".odt", ".ods", ".odp", ".epub"]
+                 ".odt", ".ods", ".odp", ".epub"],
+        "trailer": b"PK\x05\x06",
+        "trailer_window": 65557,
+        "trailer_forced": True
     },
     "GZIP": {
         "magic": [b"\x1f\x8b\x08"],
@@ -89,7 +113,10 @@ file_signatures ={
     },
     "XZ": {
         "magic": [b"\xfd7zXZ\x00"],
-        "exts": [".xz"]
+        "exts": [".xz"],
+        "trailer": b"YZ",
+        "trailer_window": 2,
+        "trailer_forced": True
     },
     "Zstandard": {
         "magic": [b"\x28\xb5\x2f\xfd"],
@@ -98,7 +125,10 @@ file_signatures ={
     "TAR": {
         "magic": [b"ustar"],
         "offset": 257,
-        "exts": [".tar"]
+        "exts": [".tar"],
+        "trailer": b"\x00" * 1024,
+        "trailer_window": 1024,
+        "trailer_forced": True
     },
     "CAB": {
         "magic": [b"MSCF"],
@@ -147,7 +177,10 @@ file_signatures ={
 
     "MP3 ID3": {
         "magic": [b"ID3"],
-        "exts": [".mp3"]
+        "exts": [".mp3"],
+        "trailer": b"TAG",
+        "trailer_window": 128,
+        "trailer_forced": False
     },
     "FLAC": {
         "magic": [b"fLaC"],
@@ -187,7 +220,10 @@ file_signatures ={
     },
     "CPIO": {
         "magic": [b"070701", b"070702", b"070707"],
-        "exts": [".cpio"]
+        "exts": [".cpio"],
+        "trailer": b"TRAILER!!!",
+        "trailer_window": 1024,
+        "trailer_forced": False
     },
     "PCAP": {
         "magic": [
@@ -202,7 +238,4 @@ file_signatures ={
         "magic": [b"\x0a\x0d\x0d\x0a"],
         "exts": [".pcapng"]
     }
-} 
-
-with open("signatures.pkl", "wb") as f:
-    pickle.dump(file_signatures, f)
+}
