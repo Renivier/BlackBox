@@ -1,24 +1,24 @@
 from pathlib import Path
 from a import file_signatures
 
-NO_MAGIC_EXTS = {
+no_magic_exts = {
     ".txt", ".csv", ".tsv", ".json", ".md", ".log", ".ini", ".cfg", ".yaml",
     ".yml", ".toml", ".py", ".js", ".ts", ".html", ".htm", ".css", ".c",
     ".h", ".cpp", ".java", ".sh", ".bat", ".ps1",
 }
 
-EXT_MAP = {}
+ext_map = {}
 for _name, _sig in file_signatures.items():
     for _ext in _sig["exts"]:
-        EXT_MAP.setdefault(_ext, []).append(_name)
+        ext_map.setdefault(_ext, []).append(_name)
 
 # How much of the file ever needs to be read.
-HEAD_SIZE = max(
+head_size = max(
     s.get("offset", 0) + len(m)
     for s in file_signatures.values()
     for m in s["magic"]
 )
-TAIL_SIZE = max(s.get("trailer_window", 0) for s in file_signatures.values())
+tail_size = max(s.get("trailer_window", 0) for s in file_signatures.values())
 
 
 def has_magic(head, sig):
@@ -44,10 +44,10 @@ def read_edges(path):
     """Read only the start and end of the file, never the whole thing."""
     try:
         with open(path, "rb") as f:
-            head = f.read(HEAD_SIZE)
+            head = f.read(head_size)
             f.seek(0, 2)
             size = f.tell()
-            f.seek(max(0, size - TAIL_SIZE))
+            f.seek(max(0, size - tail_size))
             tail = f.read()
     except OSError as error:
         raise OSError(f"Could not read file: {error}") from error
@@ -58,9 +58,9 @@ def validate(path):
     path = Path(path)
     ext = path.suffix.lower()     
 
-    candidates = EXT_MAP.get(ext)
+    candidates = ext_map.get(ext)
     if candidates is None:
-        status = "unverifiable" if ext in NO_MAGIC_EXTS else "unknown_extension"
+        status = "unverifiable" if ext in no_magic_exts else "unknown_extension"
         return {"status": status, "ext": ext}
 
     head, tail = read_edges(path)
@@ -94,3 +94,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+
+
