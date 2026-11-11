@@ -3,3 +3,6 @@ __pycache__/
 *$py.class
 tempCodeRunnerFile.py
 tempCodeRunner*
+testing_files/*
+!testing_files/.gitkeep
+testing_files/
